@@ -1,0 +1,8 @@
+pandas
+requests
+joblib
+python-dotenv
+pvlib
+pytz
+lightgbm
+scikit-learn

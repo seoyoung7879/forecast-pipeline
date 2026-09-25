@@ -1,0 +1,38 @@
+name: Daily Solar Forecast
+
+on:
+  schedule:
+    - cron: "30 5 * * *"   # UTC 05:30 = 한국시간(KST) 14:30, 기상청 14시 발표 이후
+  workflow_dispatch:        # 수동 실행 버튼도 추가
+
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 리포지토리 체크아웃
+        uses: actions/checkout@v4
+
+      - name: 파이썬 설치
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 라이브러리 설치
+        run: pip install -r requirements.txt
+
+      - name: 데이터 수집
+        env:
+          WIND_API_KEY: ${{ secrets.WIND_API_KEY }}
+          SOLAR_API_KEY: ${{ secrets.SOLAR_API_KEY }}
+        run: python fetch_data.py
+
+      - name: 예측 실행
+        run: python predict.py
+
+      - name: 결과 커밋 및 푸시
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add predictions.db
+          git commit -m "일일 예측 자동 업데이트 $(date +'%Y-%m-%d')" || echo "변경사항 없음"
+          git push
