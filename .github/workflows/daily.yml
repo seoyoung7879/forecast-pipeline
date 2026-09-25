@@ -2,7 +2,7 @@ name: Daily Solar Forecast
 
 on:
   schedule:
-    - cron: "30 5 * * *"   # UTC 05:30 = 한국시간(KST) 14:30
+    - cron: "30 5 * * *"
   workflow_dispatch:
 
 jobs:
