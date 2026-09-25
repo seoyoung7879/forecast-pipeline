@@ -1,28 +1,28 @@
 import os
-import math
-import joblib
 import numpy as np
 import pandas as pd
 import requests
 import pytz
 import pvlib
+import joblib
 import sqlite3
 from datetime import datetime
 from dotenv import load_dotenv
 
-load_dotenv()
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+load_dotenv(os.path.join(BASE_DIR, ".env"))
+
 SOLAR_API_KEY = os.getenv("SOLAR_API_KEY")
 
-GRID_MAPPING_CSV = "격자예보_관측지점매핑.csv"
-PLANT_DATA_CSV = "발전효율모델_최종데이터.csv"
-INSOLATION_MODEL_PATH = "일사모델.joblib"
-POWER_MODEL_PATH = "태양광_발전량_모델.joblib"
-DB_PATH = "predictions.db"
+GRID_MAPPING_CSV = os.path.join(BASE_DIR, "격자예보_관측지점매핑.csv")
+PLANT_DATA_CSV = os.path.join(BASE_DIR, "plant_specs.csv")
+INSOLATION_MODEL_PATH = os.path.join(BASE_DIR, "일사모델.joblib")
+POWER_MODEL_PATH = os.path.join(BASE_DIR, "태양광_발전량_모델.joblib")
+DB_PATH = os.path.join(BASE_DIR, "predictions.db")
 API_URL = "http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getVilageFcst"
 
 TARGET_PLANTS = {
-    "무릉리":   {"1단계": "제주특별자치도", "2단계": "제주시", "3단계": "한경면"},
-    "부산본부": {"1단계": "부산광역시",     "2단계": "중구",   "3단계": None},
+    "무릉리": {"1단계": "제주특별자치도", "2단계": "제주시", "3단계": "한경면"},
 }
 
 
@@ -31,6 +31,12 @@ def calculate_dew_point(temp_celsius, rh_percent):
     rh_percent = max(rh_percent, 0.1)
     gamma = (b * temp_celsius / (c + temp_celsius)) + np.log(rh_percent / 100.0)
     return (c * gamma) / (b - gamma)
+
+
+def calculate_age(base_date_str, built_date_str):
+    base_date = datetime.strptime(base_date_str, '%Y%m%d')
+    built_date = datetime.strptime(built_date_str, '%Y%m%d')
+    return round((base_date - built_date).days / 365.25, 2)
 
 
 def get_latest_base_time():
@@ -47,6 +53,7 @@ def get_latest_base_time():
         yesterday = now - pd.Timedelta(days=1)
         current_date = yesterday.strftime('%Y%m%d')
         latest_time = '2300'
+    print(f"기준일시: {current_date} {latest_time}")
     return current_date, latest_time
 
 
@@ -56,7 +63,7 @@ def get_plant_location(grid_df, plant_name):
         (grid_df['1단계'] == info['1단계']) &
         (grid_df['2단계'] == info['2단계'])
     ]
-    if info['3단계']:
+    if info.get('3단계'):
         q = q[q['3단계'] == info['3단계']]
     if q.empty:
         raise ValueError(f"[{plant_name}] 격자매핑에서 위치를 찾을 수 없습니다: {info}")
@@ -68,10 +75,10 @@ def get_plant_location(grid_df, plant_name):
     }
 
 
-def get_plant_specs(plant_df, plant_name):
-    row = plant_df[plant_df['발전구분'] == plant_name].iloc[-1]
-    capacity_mw = float(row['설비용량(MW)']) if '설비용량(MW)' in row else None
-    age_years = float(row['연식(년)']) if '연식(년)' in row else None
+def get_plant_specs(plant_df, plant_name, base_date):
+    row = plant_df[plant_df['발전구분'] == plant_name].iloc[0]
+    capacity_mw = float(row['설비용량(MW)'])
+    age_years = calculate_age(base_date, str(row['준공일자']))
     return {'설비용량(MW)': capacity_mw, '연식(년)': age_years}
 
 
@@ -100,7 +107,6 @@ def process_weather_data(items, location_info):
     seoul_tz = pytz.timezone('Asia/Seoul')
     pivot_df['datetime'] = pd.to_datetime(pivot_df['fcstDate'] + pivot_df['fcstTime'], format='%Y%m%d%H%M').dt.tz_localize(seoul_tz)
 
-    pivot_df['month'] = pivot_df['datetime'].dt.month
     pivot_df['hour'] = pivot_df['datetime'].dt.hour
     pivot_df['hour_sin'] = np.sin(2 * np.pi * pivot_df['hour'] / 24)
     pivot_df['hour_cos'] = np.cos(2 * np.pi * pivot_df['hour'] / 24)
@@ -173,7 +179,7 @@ def predict_power_generation(df, extra_features):
 def run_plant_prediction(plant_name, grid_df, plant_df, base_date, base_time):
     print(f"\n=== {plant_name} 예측 시작 ===")
     location_info = get_plant_location(grid_df, plant_name)
-    specs = get_plant_specs(plant_df, plant_name)
+    specs = get_plant_specs(plant_df, plant_name, base_date)
 
     items = get_weather_forecast(location_info['nx'], location_info['ny'], base_date, base_time)
     if not items:
@@ -185,7 +191,7 @@ def run_plant_prediction(plant_name, grid_df, plant_df, base_date, base_time):
     df = predict_insolation(df)
 
     eff_pred = predict_power_generation(df, {'연식(년)': specs['연식(년)']})
-    capacity_mw = specs['설비용량(MW)'] or 0
+    capacity_mw = specs['설비용량(MW)']
 
     df['예측효율'] = eff_pred
     df['예측발전량(kWh)'] = eff_pred * capacity_mw * 1000
@@ -208,7 +214,6 @@ if __name__ == "__main__":
     plant_df = pd.read_csv(PLANT_DATA_CSV, encoding='utf-8')
 
     base_date, base_time = get_latest_base_time()
-    print(f"기준일시: {base_date} {base_time}")
 
     all_results = []
     for plant_name in TARGET_PLANTS.keys():
