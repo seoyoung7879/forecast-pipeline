@@ -2,8 +2,8 @@ name: Daily Solar Forecast
 
 on:
   schedule:
-    - cron: "30 5 * * *"   # UTC 05:30 = 한국시간(KST) 14:30, 기상청 14시 발표 이후
-  workflow_dispatch:        # 수동 실행 버튼도 추가
+    - cron: "30 5 * * *"   # UTC 05:30 = 한국시간(KST) 14:30
+  workflow_dispatch:
 
 jobs:
   run-pipeline:
@@ -18,15 +18,11 @@ jobs:
           python-version: "3.11"
 
       - name: 라이브러리 설치
-        run: pip install -r requirements.txt
-
-      - name: 데이터 수집
-        env:
-          WIND_API_KEY: ${{ secrets.WIND_API_KEY }}
-          SOLAR_API_KEY: ${{ secrets.SOLAR_API_KEY }}
-        run: python fetch_data.py
+        run: pip install pandas requests joblib python-dotenv pvlib pytz lightgbm scikit-learn
 
       - name: 예측 실행
+        env:
+          SOLAR_API_KEY: ${{ secrets.SOLAR_API_KEY }}
         run: python predict.py
 
       - name: 결과 커밋 및 푸시
