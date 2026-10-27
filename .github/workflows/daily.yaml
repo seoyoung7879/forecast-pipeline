@@ -22,9 +22,10 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
+          cache-dependency-path: requirement.txt
       - run: |
           pip install torch --index-url https://download.pytorch.org/whl/cpu
-          grep -v '^torch' requirements.txt | pip install -r /dev/stdin
-      - run: python jobs/daily_predict.py
-      - run: python jobs/fcst_archive.py
+          grep -v '^torch' requirement.txt | pip install -r /dev/stdin
+      - run: python 코드/jobs/daily_predict.py
+      - run: python 코드/jobs/fcst_archive.py
         if: always()
