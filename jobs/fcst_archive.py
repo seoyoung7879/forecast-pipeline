@@ -22,8 +22,17 @@ with eng.begin() as c:
 def fetch(nx, ny, bd, bt):
     p = dict(serviceKey=KEY, pageNo="1", numOfRows="1500", dataType="JSON",
              base_date=bd, base_time=bt, nx=nx, ny=ny)
-    j = requests.get(URL, params=p, timeout=30).json()["response"]
+    for k in range(3):
+        try:
+            j = requests.get(URL, params=p, timeout=30).json()["response"]
+            break
+        except Exception as e:
+            print("  재시도", k + 1, nx, ny, bd, bt, str(e)[:60], flush=True)
+            time.sleep(2 * (k + 1))
+    else:
+        return None
     if j["header"]["resultCode"] != "00":
+        print("  skip", nx, ny, bd, bt, j["header"]["resultCode"], j["header"]["resultMsg"], flush=True)
         return None
     return j["body"]["items"]["item"]
 
