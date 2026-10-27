@@ -2,7 +2,7 @@ from pathlib import Path
 import numpy as np, pandas as pd
 from scipy.stats import norm
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 RESID_CSV = ROOT / "데이터" / "잔차풀_행단위.csv"
 TIER_4, TIER_3, MIN_UTIL, MIN_N = 4.0, 6.0, 0.10, 30
 
