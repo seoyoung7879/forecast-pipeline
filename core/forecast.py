@@ -3,9 +3,8 @@ from functools import lru_cache
 from pathlib import Path
 import pandas as pd, requests
 from dotenv import load_dotenv
-from streamlit import code
 
-load_dotenv(Path(__file__).resolve().parents[2] / ".env")
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 API_URL = "http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getVilageFcst"
 RUN_BASE = {"1000": "0800", "1600": "1400"}
 SKY = "하늘상태"
@@ -44,8 +43,6 @@ def fetch(nx, ny, base_date, base_time):
                 return None
             if code != "00":
                 raise RuntimeError(msg)
-            if code != "00":
-                raise RuntimeError(body["header"]["resultMsg"])
             items = body["body"]["items"]["item"]
             break
         except Exception as e:
