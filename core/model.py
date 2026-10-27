@@ -2,7 +2,7 @@ from pathlib import Path
 import joblib
 import torch, torch.nn as nn, torch.nn.functional as F
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 MODEL_DIR = ROOT / "모델"
 
 
