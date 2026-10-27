@@ -13,11 +13,16 @@ COLS = ["기온(°C)", "강수량(mm)", "습도(%)", "풍속(m/s)", SKY]
 
 
 def _pcp(v):
-    s = str(v)
-    if "없음" in s: return 0.0
-    if "미만" in s: return 0.5
-    x = [float(t) for t in re.findall(r"\d+\.?\d*", s)]
-    return sum(x) / len(x) if x else 0.0
+    s = str(v).strip()
+    if s in ("", "-", "null", "None", "nan") or "없음" in s:
+        return 0.0
+    try:
+        if float(s) in (900.0, -900.0):
+            return 0.0
+    except ValueError:
+        pass
+    x = re.findall(r"\d+\.?\d*", s)
+    return float(x[0]) if x else 0.0
 
 
 @lru_cache(maxsize=None)
