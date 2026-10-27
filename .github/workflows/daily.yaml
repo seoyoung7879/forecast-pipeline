@@ -1,0 +1,21 @@
+name: daily-forecast
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "37 23 * * *"   # KST 08:37
+    - cron: "37 7 * * *"    # KST 16:37
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    env:
+      SOLAR_API_KEY: ${{ secrets.SOLAR_API_KEY }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - run: python jobs/daily_predict.py
+      - run: python jobs/fcst_archive.py

@@ -1,0 +1,12 @@
+numpy
+pandas
+scipy
+joblib
+requests
+pvlib
+python-dotenv
+streamlit
+plotly
+sqlalchemy
+psycopg2-binary
+torch
