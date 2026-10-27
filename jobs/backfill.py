@@ -13,7 +13,7 @@ from pipeline import save_day
 
 TAG = sys.argv[2] if len(sys.argv) > 2 else "1600"
 days = int(sys.argv[1]) if len(sys.argv) > 1 else 4
-today = pd.Timestamp(datetime.now(timezone(timedelta(hours=9))).date())
+today = pd.Timestamp(datetime.now(timezone(timedelta(hours=9))).date()) + pd.Timedelta(days=1)
 dates = [today - pd.Timedelta(days=k) for k in range(days - 1, -1, -1)]
 plants = list_plants()
 grids = sorted({(int(r.nx), int(r.ny)) for r in plants.itertuples()})
