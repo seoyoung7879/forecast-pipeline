@@ -2,20 +2,29 @@ name: daily-forecast
 on:
   workflow_dispatch:
   schedule:
-    - cron: "37 23 * * *"   # KST 08:37
-    - cron: "37 7 * * *"    # KST 16:37
+    - cron: "37 23 * * *"   # 매일 KST 08:37
+    - cron: "37 7 * * *"    # 매일 KST 16:37
 
 jobs:
   run:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       SOLAR_API_KEY: ${{ secrets.SOLAR_API_KEY }}
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DB_HOST: ${{ secrets.DB_HOST }}
+      DB_PORT: ${{ secrets.DB_PORT }}
+      DB_USER: ${{ secrets.DB_USER }}
+      DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+      DB_NAME: ${{ secrets.DB_NAME }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: pip install -r requirements.txt
+          cache: pip
+      - run: |
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          grep -v '^torch' requirements.txt | pip install -r /dev/stdin
       - run: python jobs/daily_predict.py
       - run: python jobs/fcst_archive.py
+        if: always()
