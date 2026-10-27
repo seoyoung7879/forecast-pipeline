@@ -5,6 +5,11 @@ import numpy as np, pandas as pd, plotly.graph_objects as go, streamlit as st
 from sqlalchemy import text
 
 ROOT = Path(__file__).resolve().parent
+GRID_CSV = ROOT / "데이터" / "격자예보_관측지점매핑.csv"
+
+@st.cache_data
+def grid_df():
+    return pd.read_csv(GRID_CSV, encoding="utf-8-sig").dropna(subset=["위도", "경도", "격자 X", "격자 Y"])
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "jobs"))
 from db import get_engine, list_plants, add_plant, deactivate_plant
@@ -87,7 +92,22 @@ if day is None:
 
 fc = load_fc(day, tag)
 sel = plants[plants["id"].isin(set(fc["plant_id"]))].sort_values("id").reset_index(drop=True)
-
+@st.cache_data(ttl=3600, show_spinner="연간 예상 수익 계산 중...")
+def annual_estimate(tag, n_dates, last_date):
+    q = "select target_date, plant_id, hour, p, dm from forecasts_hourly where run_tag=:t"
+    with get_engine().connect() as c:
+        df = pd.read_sql(text(q), c, params={"t": tag})
+    capmap = plants_all().set_index("id")["capacity_mw"].astype(float)
+    rows = []
+    for d, g in df.groupby("target_date"):
+        ids = sorted(g["plant_id"].unique())
+        piv = lambda col: g.pivot(index="plant_id", columns="hour", values=col).reindex(
+            index=ids, columns=range(24))
+        P = piv("p").fillna(0).values.astype(float)
+        DM = piv("dm").fillna(False).astype(bool).values
+        o = simulate_pool(P, capmap.loc[ids].values, DM, pd.Timestamp(d).month, get_res(), "corr", B=200)
+        rows.append((d, float(o["money"].sum(1).mean()), float(o["gen"].sum(1).mean())))
+    return pd.DataFrame(rows, columns=["date", "money", "kwh"]).sort_values("date")
 st.title("☀️ VPP 발전량·예상 정산금")
 tab1, tab2, tab3 = st.tabs(["VPP 전체", "개별 발전소", "VPP 관리"])
 
@@ -109,6 +129,23 @@ if not sel.empty:
         if cap.sum() <= 20:
             st.warning("설비 합계가 20MW 이하라 참고용입니다.")
         c1, c2, c3 = st.columns(3)
+        est = annual_estimate(tag, len(ds), str(ds[0]))
+        est = est.tail(365)
+        n = len(est)
+        done = est["money"].sum()
+        avg = est["money"].mean()
+        annual = done + avg * max(365 - n, 0)
+
+        st.subheader("예상 연간 수익")
+        y1, y2, y3 = st.columns(3)
+        y1.metric("예상 연간 수익", f"{annual:,.0f} 원")
+        y2.metric("하루 평균 정산금", f"{avg:,.0f} 원")
+        y3.metric("예측 반영 일수", f"{n} / 365일")
+        st.caption(f"예측이 있는 {n}일의 정산금 합계({done:,.0f}원)에 "
+           f"나머지 {max(365 - n, 0)}일을 하루 평균으로 채운 값입니다. "
+           "그날그날의 VPP 구성 기준이라, 발전소를 바꾸면 이후 날짜부터 반영됩니다.")
+        if n < 30:
+            st.warning("예측 일수가 적어 계절 변동이 반영되지 않았습니다. 데이터가 쌓일수록 정확해집니다.")
         c1.metric("총 예상 발전량", f"{exp_gen.sum():,.0f} kWh",
                   f"90% 구간 {np.percentile(gen_day,5):,.0f}~{np.percentile(gen_day,95):,.0f}")
         c2.metric("예상 정산금(기대값)", f"{money_day.mean():,.0f} 원",
@@ -172,27 +209,36 @@ with tab3:
         st.rerun()
 
     st.subheader("발전소 추가")
-    with st.form("add"):
-        a1, a2, a3 = st.columns(3)
-        name = a1.text_input("이름")
-        cap_in = a2.number_input("설비용량(MW)", 0.1, 50.0, 1.0, 0.1)
-        built = a3.date_input("준공일", value=datetime(2022, 1, 1))
-        b1, b2, b3 = st.columns(3)
-        lat = b1.number_input("위도", 33.0, 39.0, 36.5, format="%.4f")
-        lon = b2.number_input("경도", 124.0, 132.0, 127.5, format="%.4f")
-        alt = b3.number_input("해발고도(m)", 0.0, 1500.0, 0.0)
-        e1, e2, e3 = st.columns(3)
-        sido, sigungu, emd = e1.text_input("시도"), e2.text_input("시군구"), e3.text_input("읍면동(선택)")
-        go_add = st.form_submit_button("추가하고 내일 예측 생성")
-    if go_add:
-        if not name or not sido or not sigungu:
-            st.error("이름, 시도, 시군구는 필수입니다.")
+    g = grid_df()
+    a1, a2, a3 = st.columns(3)
+    name = a1.text_input("이름")
+    cap_in = a2.number_input("설비용량(MW)", 0.1, 50.0, 1.0, 0.1)
+    built = a3.date_input("준공일", value=datetime(2022, 1, 1))
+
+    e1, e2, e3 = st.columns(3)
+    sido = e1.selectbox("시도", sorted(g["1단계"].unique()))
+    g1 = g[g["1단계"] == sido]
+    sigungu = e2.selectbox("시군구", sorted(g1["2단계"].dropna().unique()))
+    g2 = g1[g1["2단계"] == sigungu]
+    emds = sorted(g2["3단계"].dropna().unique())
+    emd = e3.selectbox("읍면동", emds) if emds else None
+    row = (g2[g2["3단계"] == emd] if emd else g2).iloc[0]
+    nx, ny = int(row["격자 X"]), int(row["격자 Y"])
+    lat, lon = float(row["위도"]), float(row["경도"])
+    alt = row.get("노장해발고도(m)")
+
+    if st.button("추가하고 내일 예측 생성"):
+        if not name.strip():
+            st.error("이름을 입력하세요.")
+        elif name.strip() in set(plants["name"]):
+            st.error("이미 있는 이름입니다.")
+        elif pd.isna(alt):
+            st.error("이 지역은 해발고도 정보가 없어 선택할 수 없습니다. 다른 지역을 고르세요.")
         else:
-            nx, ny = to_grid(lat, lon)
             with st.spinner(f"격자({nx},{ny}) 예보로 예측 중..."):
-                pid, ok, D, tg = create_plant(name=name, cap=cap_in, sido=sido, sigungu=sigungu,
-                                              emd=emd or None, built=built, lat=lat, lon=lon,
-                                              alt=alt, nx=nx, ny=ny)
+                pid, ok, D, tg = create_plant(name=name.strip(), cap=cap_in, sido=sido, sigungu=sigungu,
+                                              emd=emd, built=built, lat=lat, lon=lon,
+                                              alt=float(alt), nx=nx, ny=ny)
             if ok:
                 st.success(f"추가 완료 (id {pid}). {D} {tg} 예측이 저장되었습니다.")
             else:

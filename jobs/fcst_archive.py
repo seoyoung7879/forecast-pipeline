@@ -27,10 +27,14 @@ def fetch(nx, ny, bd, bt):
         return None
     return j["body"]["items"]["item"]
 
-SQL = text("""insert into forecast_raw values
-  (:nx,:ny,:bd,:bt,:fd,:ft,:cat,:val) on conflict do nothing""")
+from psycopg2.extras import execute_values
+
+with eng.connect() as c:
+    done = {tuple(r) for r in c.execute(text(
+        "select distinct nx, ny, base_date, base_time from forecast_raw"))}
 
 now = datetime.now()
+total = 0
 for d in range(0, 4):
     bd = (now - timedelta(days=d)).strftime("%Y%m%d")
     for bt in BASE_TIMES:
@@ -38,13 +42,23 @@ for d in range(0, 4):
             continue
         n = 0
         for nx, ny in grids:
+            if (nx, ny, bd, bt) in done:
+                continue
             items = fetch(nx, ny, bd, bt)
             if not items:
                 continue
-            rows = [dict(nx=nx, ny=ny, bd=bd, bt=bt, fd=i["fcstDate"], ft=i["fcstTime"],
-                         cat=i["category"], val=str(i["fcstValue"])) for i in items]
-            with eng.begin() as c:
-                c.execute(SQL, rows)
+            tup = [(nx, ny, bd, bt, i["fcstDate"], i["fcstTime"], i["category"], str(i["fcstValue"]))
+                   for i in items]
+            raw = eng.raw_connection()
+            try:
+                cur = raw.cursor()
+                execute_values(cur, "insert into forecast_raw values %s on conflict do nothing",
+                               tup, page_size=2000)
+                raw.commit()
+            finally:
+                raw.close()
             n += 1
+            total += len(tup)
             time.sleep(0.2)
-        print(bd, bt, "격자", n, "/", len(grids))
+        print(bd, bt, "격자", n, "/", len(grids), flush=True)
+print("저장 행 수:", total)
