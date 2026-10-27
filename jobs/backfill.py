@@ -11,7 +11,7 @@ from db import get_engine, list_plants
 from core.forecast import fetch, RUN_BASE
 from pipeline import save_day
 
-TAG = "1600"
+TAG = sys.argv[2] if len(sys.argv) > 2 else "1600"
 days = int(sys.argv[1]) if len(sys.argv) > 1 else 4
 today = pd.Timestamp(datetime.now(timezone(timedelta(hours=9))).date())
 dates = [today - pd.Timedelta(days=k) for k in range(days - 1, -1, -1)]
