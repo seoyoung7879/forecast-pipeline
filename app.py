@@ -147,16 +147,16 @@ if not sel.empty:
         if n < 30:
             st.warning("예측 일수가 적어 계절 변동이 반영되지 않았습니다. 데이터가 쌓일수록 정확해집니다.")
         c1.metric("총 예상 발전량", f"{exp_gen.sum():,.0f} kWh",
-                  f"90% 구간 {np.percentile(gen_day,5):,.0f}~{np.percentile(gen_day,95):,.0f}")
+                  f"80% 구간 {np.percentile(gen_day,10):,.0f}~{np.percentile(gen_day,90):,.0f}")
         c2.metric("예상 정산금(기대값)", f"{money_day.mean():,.0f} 원",
-                  f"90% 구간 {np.percentile(money_day,5):,.0f}~{np.percentile(money_day,95):,.0f}")
+                  f"80% 구간 {np.percentile(money_day,10):,.0f}~{np.percentile(money_day,90):,.0f}")
         c3.metric("평균 효율(낮)", f"{(P*DM).sum()/max(DM.sum(),1)*100:.1f} %")
 
-        lo, hi = np.percentile(gen, [5, 95], axis=0)
+        lo, hi = np.percentile(gen, [10, 90], axis=0)
         f1 = go.Figure()
         f1.add_scatter(x=hrs, y=hi, line=dict(width=0), showlegend=False, hoverinfo="skip")
         f1.add_scatter(x=hrs, y=lo, fill="tonexty", fillcolor="rgba(255,167,38,0.25)",
-                       line=dict(width=0), name="90% 구간")
+                       line=dict(width=0), name="80% 구간")
         f1.add_scatter(x=hrs, y=exp_gen, mode="lines+markers", name="예상 발전량",
                        line=dict(color="#F57C00", width=3))
         f1.update_layout(height=380, xaxis_title="시", yaxis_title="kWh", hovermode="x unified")
